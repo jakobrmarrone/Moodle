@@ -33,7 +33,9 @@ static volatile bool audioReady = false;
 // State
 // ---------------------------------------------------------------------------
 static bool streaming = false;
-static unsigned long lastImuMs = 0;
+static unsigned long lastImuMs     = 0;
+static unsigned long lastDiagMs    = 0;
+static const unsigned long DIAG_INTERVAL_MS = 200;   // print orientation every 200 ms
 
 // ---------------------------------------------------------------------------
 // PDM callback — fires every 10ms with 160 samples at 16kHz
@@ -75,8 +77,8 @@ static void buildImuPacket(uint8_t* out) {
     else gx = gy = gz = 0.0f;
 
     int16_t vals[6] = {
-        (int16_t)(ax * 1000.0f), (int16_t)(ay * 1000.0f), (int16_t)(az * 1000.0f),
-        (int16_t)(gx * 10.0f),  (int16_t)(gy * 10.0f),  (int16_t)(gz * 10.0f),
+        (int16_t)( ax * 1000.0f), (int16_t)(-ay * 1000.0f), (int16_t)(az * 1000.0f),
+        (int16_t)( gx * 10.0f),  (int16_t)( gy * 10.0f),  (int16_t)(gz * 10.0f),
     };
     for (int i = 0; i < 6; i++) {
         out[i * 2]     = (uint8_t)(vals[i] >> 8);
@@ -89,7 +91,9 @@ static void buildImuPacket(uint8_t* out) {
 // ---------------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    while (!Serial);
+    // Note: remove the line below for standalone (no-USB) operation.
+    // Keeping it during development so Serial Monitor shows boot messages.
+    while (!Serial && millis() < 3000);   // wait up to 3 s for USB host
 
     Serial.println("[DogSense] Booting...");
 
@@ -118,6 +122,10 @@ void setup() {
     BLE.addService(dogSenseService);
 
     commandChar.setEventHandler(BLEWritten, onCommandWritten);
+
+    // Request a 10ms connection interval (8 × 1.25ms). iOS usually honours this,
+    // cutting latency from the default ~30ms negotiated interval.
+    BLE.setConnectionInterval(8, 8);
     BLE.advertise();
 
     Serial.println("[DogSense] Ready — advertising as 'DogSense'");
@@ -155,6 +163,32 @@ void loop() {
         streaming = false;
         Serial.print("[DogSense] Disconnected: ");
         Serial.println(central.address());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Serial orientation diagnostic (always on, 5 Hz)
+    // Open Serial Monitor at 115200 to watch pitch/roll live as you tilt the board.
+    // ---------------------------------------------------------------------------
+    unsigned long now = millis();
+    if (now - lastDiagMs >= DIAG_INTERVAL_MS) {
+        lastDiagMs = now;
+        float ax, ay, az, gx, gy, gz;
+        if (IMU.accelerationAvailable()) IMU.readAcceleration(ax, ay, az);
+        else ax = ay = az = 0.0f;
+        if (IMU.gyroscopeAvailable())   IMU.readGyroscope(gx, gy, gz);
+        else gx = gy = gz = 0.0f;
+
+        float pitch = atan2(ay, sqrt(ax*ax + az*az)) * 180.0f / M_PI;
+        float roll  = atan2(-ax, az)                 * 180.0f / M_PI;
+
+        Serial.print("pitch:");  Serial.print(pitch, 1);
+        Serial.print("\troll:");  Serial.print(roll,  1);
+        Serial.print("\tax:");    Serial.print(ax,    3);
+        Serial.print("\tay:");    Serial.print(ay,    3);
+        Serial.print("\taz:");    Serial.print(az,    3);
+        Serial.print("\tgx:");    Serial.print(gx,    1);
+        Serial.print("\tgy:");    Serial.print(gy,    1);
+        Serial.print("\tgz:");    Serial.println(gz,  1);
     }
 
     BLE.poll();

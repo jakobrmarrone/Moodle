@@ -11,16 +11,17 @@
 // ---------------------------------------------------------------------------
 // Packet sizes
 // ---------------------------------------------------------------------------
-// Audio: 160 µ-law encoded bytes = 10ms of 16kHz mono audio (100 notifs/sec)
-#define AUDIO_PACKET_BYTES         160
+// Audio: 200 µ-law encoded bytes = 12.5ms of 16kHz mono audio (~80 notifs/sec)
+// Reduced from 160 bytes/10ms to give the BLE stack breathing room between events.
+#define AUDIO_PACKET_BYTES         200
 
 // IMU: 6 x int16_t = 12 bytes [ax, ay, az, gx, gy, gz]
 // accel scaled x1000 (divide by 1000.0 for g), gyro scaled x10 (divide by 10.0 for dps)
 #define IMU_PACKET_BYTES           12
 
-// PDM buffer: 160 samples x 2 bytes each = 320 bytes
-// PDM library delivers 10ms of audio per callback at 16kHz
-#define PDM_BUFFER_BYTES           320
+// PDM buffer: 200 samples x 2 bytes each = 400 bytes
+// PDM library delivers 12.5ms of audio per callback at 16kHz
+#define PDM_BUFFER_BYTES           400
 
 // ---------------------------------------------------------------------------
 // Streaming control bytes (written to Command characteristic)
